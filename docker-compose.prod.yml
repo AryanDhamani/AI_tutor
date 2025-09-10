@@ -1,0 +1,181 @@
+version: '3.8'
+
+services:
+  # Main API service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: ai-tutor-backend:latest
+    container_name: ai-tutor-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Core configuration
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      
+      # Security
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://yourdomain.com}
+      - STORAGE_SECRET_KEY=${STORAGE_SECRET_KEY}
+      
+      # External services
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      
+      # Performance
+      - WORKERS=4
+      - WORKER_CLASS=uvicorn.workers.UvicornWorker
+      - MAX_REQUESTS=1000
+      - TIMEOUT=30
+      
+      # Storage
+      - STORAGE_TYPE=${STORAGE_TYPE:-local}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME:-}
+      
+      # Resource limits
+      - MAX_MEMORY_MB=512
+      - MAX_CPU_PERCENT=80
+      - RENDER_TIMEOUT_SEC=300
+      
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=true
+      
+      # Monitoring
+      - METRICS_ENABLED=true
+    volumes:
+      # Persistent storage for videos (if using local storage)
+      - video_storage:/app/storage/videos
+      - temp_storage:/app/storage/code
+    networks:
+      - ai-tutor-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: ai-tutor-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - video_storage:/var/www/videos:ro
+    networks:
+      - ai-tutor-network
+    depends_on:
+      - api
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis for session storage and caching (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: ai-tutor-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-tutor-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # Monitoring with Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai-tutor-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - ai-tutor-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Grafana for dashboards (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ai-tutor-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - ai-tutor-network
+    depends_on:
+      - prometheus
+
+volumes:
+  video_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${VIDEO_STORAGE_PATH:-./storage/videos}
+  
+  temp_storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${TEMP_STORAGE_PATH:-./storage/code}
+  
+  redis_data:
+    driver: local
+  
+  prometheus_data:
+    driver: local
+  
+  grafana_data:
+    driver: local
+
+networks:
+  ai-tutor-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+

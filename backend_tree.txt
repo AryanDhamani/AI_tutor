@@ -1,0 +1,57 @@
+backend/
+├── api_contract_reference.md
+├── app/
+│   ├── __init__.py
+│   ├── api_documentation.py
+│   ├── config.py
+│   ├── frontend_polling_guide.py
+│   ├── main.py
+│   ├── middleware.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── routes_monitoring.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── gemini_service.py
+│   │   ├── job_store.py
+│   │   ├── logging_service.py
+│   │   ├── render_service.py
+│   │   └── validation_service.py
+│   └── storage/
+│       ├── code/
+│       │   └── binomialsearchtree_animation_20250823_132820.py
+│       └── videos/
+│           └── media/
+│               ├── images/
+│               │   └── binomialsearchtree_animation_20250823_132820/
+│               ├── texts/
+│               │   ├── 2b5cabb14e5a87ff.svg
+│               │   └── e91ffbdfb717de07.svg
+│               └── videos/
+│                   └── binomialsearchtree_animation_20250823_132820/
+│                       └── 480p15/
+│                           ├── binomialsearchtree_animation_20250823_132820.mp4
+│                           └── partial_movie_files/
+│                               └── BinomialSearchTreeAnimation/
+│                                   ├── partial_movie_file_list.txt
+│                                   ├── uncached_00000.mp4
+│                                   ├── uncached_00001.mp4
+│                                   ├── uncached_00002.mp4
+│                                   ├── uncached_00003.mp4
+│                                   └── uncached_00004.mp4
+├── deployment_guide.md
+├── docker/
+│   ├── gunicorn.conf.py
+│   └── start.sh
+├── docker-compose.prod.yml
+├── Dockerfile.prod
+├── env.example
+├── frontend_integration_guide.md
+├── integration_testing_checklist.md
+├── performance_test.py
+├── README.md
+├── requirements.txt
+├── run_server.py
+├── setup_and_test.md
+├── test_api_key.py
+└── test_backend.py

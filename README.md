@@ -1,224 +1,188 @@
-15-Step Checklist for Frontend MVP (Next.js App Router - Dummy UI)
-
-[x] Step 1: Project Setup & Styling Foundation
-Action: Install and configure Tailwind CSS in your Next.js project.
-Details: Follow the Next.js + Tailwind guide. Create tailwind.config.js and postcss.config.js. Update globals.css with Tailwind directives.
-Goal: Tailwind working → rapid class-based styling.
-
-[x] Step 2: Global Layout & Navigation Shell
-Action: Modify app/layout.tsx and create a Navbar component.
+[x] Step 1: Environment & Tooling Setup
+Action: Prepare a clean Python env.
 Details:
 
-In app/layout.tsx, set up <html> and <body>.
+Use Python 3.10–3.12. Create & activate a virtualenv.
 
-Create components/Navbar.tsx with dummy links: “AI Tutor MVP” (home), “Dashboard”, “About”.
+Ensure FFmpeg is installed and on PATH (required by Manim/moviepy).
 
-Render <Navbar /> above {children} in layout.
-Goal: Persistent navigation bar across all pages.
+Windows note: if Manim complains, install VC++ build tools and update GPU drivers.
+Goal: Reproducible, isolated runtime for the API and renderer.
 
-[x] Step 3: Landing Page with Topic Input (UI Only)
-Action: Create the homepage for entering a topic.
+[x] Step 2: Dependency Install (No App Code Yet)
+Action: Install core libs.
+Details: FastAPI, Uvicorn, Pydantic v2, python-dotenv, google-generativeai, manim, moviepy.
+Goal: All runtime deps present for Gemini calls + video render.
+
+[x] Step 3: Project Structure (Folders Only)
+Action: Create folders (no files yet).
 Details:
 
-File: app/page.tsx.
+backend/
+  app/
+    services/          # gemini client, manim runner, job store
+    storage/
+      code/            # temp .py files generated for manim
+      videos/          # rendered .mp4 files served to frontend
+  .env.example
+  requirements.txt
+  README.md
 
-Input field for “Enter a topic” and a “Generate” button.
 
-Use useState to track the topic string.
+Goal: Clear separation of API logic, services, and storage.
 
-Button just logs topic to console for now.
-Goal: Simple input flow to start the tutor.
+[x] Step 4: Configuration & Secrets
+Action: Set environment variables.
+Details: Add .env with:
 
-[x] Step 4: API Response Tabs (Dummy Data)
-Action: Build a tabbed view for displaying results.
+GEMINI_API_KEY= your key
+
+ALLOWED_ORIGINS=http://localhost:3000 (frontend)
+
+MANIM_QUALITY=L (L/M/H), RENDER_TIMEOUT_SEC=180
+
+(Optional) DATA_DIR if you want explicit absolute paths
+Goal: Centralized config for Gemini, CORS, and rendering.
+
+[x] Step 5: CORS & Server Boot
+Action: Enable CORS and run the server.
 Details:
 
-Create components/Tabs.tsx with 4 tabs: Explanation, Example, Manim Code, Raw JSON.
+Allow origin http://localhost:3000.
 
-For now, render dummy static content inside each tab.
-Goal: Tab structure ready for integration.
+Health check endpoint (e.g., /health) to verify boot.
+Goal: Frontend can reach backend locally without CORS errors.
 
-[x] Step 5: Explanation View (UI Only)
-Action: Create a component to show explanation text.
+[x] Step 6: API Contract – Mirror Frontend
+Action: Define your request/response shapes (no code).
+Details (names & types):
+
+LessonResponse → explanation: { title: string; bullets: string[] }
+
+ExampleResponse → example: { prompt: string; walkthrough: string[]; answer?: string }
+
+ManimResponse → manim: { language: "python"; filename: string; code: string; notes?: string[] }
+
+RenderJob → { jobId: string; status: "queued"|"rendering"|"ready"|"error"; videoUrl?: string; error?: string }
+Goal: Exact 1:1 shape with your UI’s Zod types.
+
+[x] Step 7: Gemini Prompting Strategy
+Action: Design three prompts (no code).
 Details:
 
-File: components/ExplanationView.tsx.
+Lesson plan: “Return JSON ONLY with explanation{title, bullets[]}… concise 4–7 bullets, no markdown fences.”
 
-Accepts props like title and bullets: string[].
+Example: “Return JSON ONLY with example{prompt, walkthrough[], answer?}… 3–7 clear steps.”
 
-For MVP, show hardcoded dummy explanation.
-Goal: Visual structure for explanation section.
+Manim code: “Return code only (no prose). One Scene subclass, ~40–80 lines, prefer Text() to avoid LaTeX.”
 
-[x] Step 6: Example View (UI Only)
-Action: Build a component to render examples.
+Require strict JSON for 1 & 2; strip fences if the model adds them.
+Goal: Deterministic, parseable outputs that pass schema validation.
+
+[x] Step 8: Request Validation & Safety
+Action: Decide validation rules (enforced server-side).
 Details:
 
-File: components/ExampleView.tsx.
+Topic length: 3–120 chars; strip control chars.
 
-Show prompt, walkthrough (as steps), and answer.
+For filename, allow only safe [a-zA-Z0-9_-].
 
-Render with dummy example data.
-Goal: Placeholder for example walkthroughs.
+Reject code that includes imports outside Manim stdlib (simple scan).
 
-[x] Step 7: Manim Code View (UI Only)
-Action: Create a code block viewer for Manim snippets.
+Rate-limit per IP (simple in-memory counter) to prevent abuse.
+Goal: Prevent malicious inputs and safeguard the renderer.
+
+[x] Step 9: Endpoints & Flow (Design Only)
+Action: Finalize endpoint behaviors.
 Details:
 
-File: components/ManimCodeView.tsx.
+POST /api/lesson → body { topic, plan? } → returns { explanation } (from Gemini).
 
-Render syntax-highlighted Python code.
+POST /api/example → body { topic, explanation } → returns { example } (Gemini).
 
-Add “Copy” and “Download” buttons (dummy actions).
-Goal: UI to present animation code cleanly.
+POST /api/manim → body { topic, example } → returns { manim } (Gemini code string).
 
-[x] Step 8: Raw JSON Viewer
-Action: Provide a collapsible JSON inspector.
+POST /api/render → body { filename, code } → returns { jobId, status:"queued" }.
+
+GET /api/render/:jobId → returns { status, videoUrl? }.
+Goal: Clear, minimal surface area the frontend can call.
+
+[x] Step 10: Render Pipeline (Operational Plan)
+Action: Define how a render runs.
 Details:
 
-File: components/JSONViewer.tsx.
+Create a job with jobId, status queued.
 
-Pretty-print JSON object (dummy placeholder initially).
+Save {filename}.py under storage/code/.
 
-Add a “Copy JSON” button.
-Goal: Debug-friendly raw output display.
+Launch manim CLI with chosen quality (L/M/H), output to storage/videos/{filename}.mp4.
 
-[x] Step 9: Hook Up Dummy API Calls
-Action: Mock the 3 API calls (explanation/example/manim).
+Update job status: rendering → ready (or error).
+
+Serve /static/videos/{filename}.mp4 so frontend can play it.
+Goal: Deterministic, observable path from code → mp4.
+
+[x] Step 11: Job Store & Polling Model
+Action: Choose simple in-memory job tracking for MVP.
 Details:
 
-Create lib/api.ts with async functions returning dummy JSON after setTimeout.
+Job fields: id, status, videoUrl, error.
 
-On submit, call these functions in parallel (Promise.all).
+Background worker/process to execute queued jobs.
 
-Show combined result in tabs.
-Goal: End-to-end flow working with fake data.
+Frontend polls every 2–3s until ready|error.
+Goal: Reliable UX without introducing external queues yet.
 
-[x] Step 10: Loading & Error States
-Action: Add skeletons and error handling.
+[x] Step 12: Logging & Observability
+Action: Define logs and metrics (console/file).
 Details:
 
-Show skeleton loaders in tabs while fetching.
+Log each request: topic hash, durations for Gemini & render.
 
-If any API fails, show inline error in that tab.
+Log job lifecycle: created → rendering → ready/error.
 
-If all fail, show global error card.
-Goal: Resilient UI for all states.
+Add a request X-Request-ID for traceability.
+Goal: Fast diagnosis of latency, failures, and bad inputs.
 
-[x] Step 11: Dashboard Page (UI Only)
-Action: Create a dummy dashboard page for users.
+[x] Step 13: Local Testing Plan
+Action: Smoke-test each endpoint.
 Details:
 
-File: app/dashboard/page.tsx.
+/api/lesson with a simple topic (e.g., “Pythagorean theorem”) → expect JSON explanation.
 
-Show “Recent Topics” list (static dummy data).
+Chain into /api/example → expect steps + answer.
 
-Each item links back to home with prefilled topic.
-Goal: Basic navigation to saved lessons.
+/api/manim → ensure code string returns (no prose).
 
-[x] Step 12: Auth Placeholder (UI Only)
-Action: Add dummy login/logout flow.
+/api/render then poll → verify videoUrl serves an mp4 that plays.
+Goal: Confirm the full pipeline before wiring to UI.
+
+[x] Step 14: Frontend Integration Checklist
+Action: Point the UI to this backend.
 Details:
 
-Create app/login/page.tsx with email + password fields.
+In ai-tutor-mvp/.env.local, set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000.
 
-Add a dummy AuthContext with isAuthenticated.
+Map calls 1:1:
 
-Navbar shows “Login” or “Logout” based on state.
-Goal: Fake login state toggling.
+Generate → POST /api/lesson, POST /api/example, POST /api/manim (parallel).
 
-[x] Step 13: Responsiveness & Dark Mode
-Action: Ensure mobile usability.
+“Render Animation” → POST /api/render then poll GET /api/render/:jobId.
+
+Tabs show partial results immediately; retry failing tab individually.
+Goal: Seamless swap from mocks to real API with zero UI change.
+
+[x] Step 15: Deployment & Hardening Plan
+Action: Prep for moving beyond local.
 Details:
 
-Tailwind responsive prefixes for stacking inputs, tabs, and cards.
+Process model: Uvicorn with multiple workers for concurrency; separate render worker if heavy.
 
-Add dark mode toggle using class="dark".
-Goal: App usable on mobile + dark mode works.
+File storage: Persist storage/videos (volume or object storage) and secure /static.
 
-[x] Step 14: JSON Schema Validation (UI Only)
-Action: Add client-side schema guards.
-Details:
+Security: Set strict CORS, sanitize filenames, enforce rate limits, cap topic length, cap code size.
 
-Define Zod schema for TutorResponse.
+Reliability: Timeouts for Gemini/render, retries for transient errors, cleanup old jobs/files.
 
-Validate dummy API responses before rendering.
-
-If invalid, show “Invalid Data” in Raw JSON tab.
-Goal: Safety net for bad responses.
-
-[x] Step 15: Final Cleanup & Review
-Action: Organize and polish.
-Details:
-
-Move components into folders (components/tabs, components/views).
-
-Remove stray console.logs.
-
-Verify all dummy actions clearly marked.
-
-Click through every flow: Topic → Generate → Tabs → Dashboard.
-Goal: A clean, working dummy MVP ready for API wiring.
-
-[x] Step 16: Configure Backend Base URL & Contracts
-Action: Add environment variables and align the JSON contract.
-Details:
-
-Create .env.local in frontend with:
-
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-
-
-Replace any VITE_* refs with NEXT_PUBLIC_API_BASE_URL.
-
-Centralize types in types/tutor.ts and export the exact schema used by the UI.
-Goal: Frontend can point to local backend without code changes elsewhere.
-
-[x] Step 17: Replace Mock Calls with Real Endpoints
-Action: Update the API layer to hit the backend.
-Details:
-
-In lib/api.ts, point to:
-
-POST /api/lesson → returns { explanation }
-
-POST /api/example → returns { example }
-
-POST /api/manim → returns { manim }
-
-(Later) POST /api/render → returns { jobId } and GET /api/render/:jobId → { status, videoUrl? }
-
-Keep the same return shapes you already render.
-Goal: Same UI, now talking to real backend.
-
-[x] Step 18: Add Video Preview Panel with Polling
-Action: Allow the Manim video preview when available.
-Details:
-
-In components/ManimCodeView.tsx, beneath the code block add:
-
-“Render Animation” button → calls POST /api/render with { filename, code }.
-
-Start polling GET /api/render/:jobId every 2–3s for status.
-
-When status === "ready", show <video controls src={videoUrl} />.
-
-Add a small inline status chip: Rendering…, Queued, Error.
-Goal: Users can trigger render and see the video when done.
-
-[x] Step 19: Add Topic Suggestions and Search
-Action: Improve resilience across the three calls.
-Details:
-
-If one of the three calls fails, show a tab-level error chip and a Retry button only for that tab.
-
-Keep and display successful tabs immediately; don’t block on the failing tab.
-Goal: Smooth partial-success experience.
-
-[x] Step 20: Partial Success & Retry UX
-Action: Add event logging (console for now).
-Details:
-
-Log: topic_submitted, explanation_ok|fail, example_ok|fail, manim_ok|fail, render_job_created, render_status_update, render_ready, render_error.
-
-Include durations to measure backend latency.
-Goal: Quick visibility into bottlenecks and failures.# AI_tutor
+Docs: “How to run locally”, “How to configure keys”, “Known limitations” (e.g., no sandboxed Python).
+Goal: Stable, secure MVP ready for demos and iterative productionization.
